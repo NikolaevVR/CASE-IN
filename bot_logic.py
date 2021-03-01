@@ -91,7 +91,5 @@ def Dialog(message):
     bot.send_message(message.from_user.id, f'{message.from_user.first_name} {message.from_user.last_name}'
                                            f', ты издеваешься?\n'
                                            f'"{message.text}" спрашиваешь ты.\n ДА НЕ ЕБУ Я. Загугли!')
-    bot.send_message(message.from_user.id, "Можете задать мне вопрос или выбрать интересующий из списка:",
-                     reply_markup=kb.StartQuestions)
-    bot.register_next_step_handler(message, StandartAnswers)
+
 
