@@ -2,6 +2,7 @@ import telebot
 import psycopg2
 import keyboards as kb
 from config import bot_api, database_connect
+from telebot import types
 
 bot = telebot.TeleBot(bot_api)
 
@@ -80,7 +81,7 @@ def StandartAnswers(message):
     elif message.text == 'Нормативные документы':
         bot.send_message(message.from_user.id, "Нормативные документы или ссылка на страницу с документами")
         bot.send_message(message.from_user.id, "Можете задать мне вопрос или выбрать интересующий из списка:",
-                                                reply_markup=kb.StartQuestions)
+                                                reply_markup = kb.StartQuestions)
         bot.register_next_step_handler(message, StandartAnswers)
     else:
         Dialog(message)
