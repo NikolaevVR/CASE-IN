@@ -3,6 +3,7 @@ import psycopg2
 import keyboards as kb
 from config import bot_api, database_connect
 from telebot import types
+from TelegramBot import *
 
 bot = telebot.TeleBot(bot_api)
 
@@ -87,9 +88,7 @@ def StandartAnswers(message):
         Dialog(message)
 
 def Dialog(message):
-    print( f'Пользователь {message.from_user.first_name} сука умный')
-    bot.send_message(message.from_user.id, f'{message.from_user.first_name} {message.from_user.last_name}'
-                                           f', ты издеваешься?\n'
-                                           f'"{message.text}" спрашиваешь ты.\n ДА НЕ ЕБУ Я. Загугли!')
+    bot.send_message(message.from_user.id, bright(str(message.text)))
+
 
 
