@@ -2,7 +2,9 @@ import telebot
 import psycopg2
 import keyboards as kb
 from config import bot_api, database_connect
-from telebot import types
+from datetime import datetime
+from datetime import date
+import time
 
 bot = telebot.TeleBot(bot_api)
 
@@ -16,10 +18,10 @@ def get_text_messages(message):
     if record==[]:
         register(message)
     else:
+        bot.send_message(message.from_user.id, "Приветствую", reply_markup=kb.Menu)
         bot.send_message(message.from_user.id, "Можете задать мне вопрос или выбрать интересующий из списка:",
                                                 reply_markup=kb.StartQuestions)
-        bot.register_next_step_handler(message, StandartAnswers)
-        #Добавить менюшку действий????
+        bot.register_next_step_handler(message, Dialog)
     cursor.close()
     con.close()
 
@@ -61,35 +63,97 @@ def write_teleID(message,email):
                                                "Я помогу Вам освоиться и узнать как всё устроено.\n"
                                                 "Можете задать мне вопрос или выбрать интересующий из списка:",
                                                 reply_markup=kb.StartQuestions)
-        bot.register_next_step_handler(message, StandartAnswers)
+        bot.register_next_step_handler(message, Dialog)
     else:
         bot.send_message(message.from_user.id, "Кажется, Вы ввели неправильную почту.\n"
                                                "Введите свою рабочую почту, которую Вам выдали в отделе кадров.")
         bot.register_next_step_handler(message, ask_teleID)
 
-def StandartAnswers(message):
-    if message.text == 'История компании':
-        bot.send_message(message.from_user.id, "История компании и ссылка на нужную менюшку сайта")
-        bot.send_message(message.from_user.id, "Можете задать мне вопрос или выбрать интересующий из списка:",
-                                                reply_markup=kb.StartQuestions)
-        bot.register_next_step_handler(message, StandartAnswers)
-    elif message.text == 'Корпаративная культура':
-        bot.send_message(message.from_user.id, "О Корпаративной культуре и ссылка на нужную менюшку сайта")
-        bot.send_message(message.from_user.id, "Можете задать мне вопрос или выбрать интересующий из списка:",
-                                                reply_markup=kb.StartQuestions)
-        bot.register_next_step_handler(message, StandartAnswers)
-    elif message.text == 'Нормативные документы':
-        bot.send_message(message.from_user.id, "Нормативные документы или ссылка на страницу с документами")
-        bot.send_message(message.from_user.id, "Можете задать мне вопрос или выбрать интересующий из списка:",
-                                                reply_markup = kb.StartQuestions)
-        bot.register_next_step_handler(message, StandartAnswers)
-    else:
-        Dialog(message)
 
 def Dialog(message):
-    print( f'Пользователь {message.from_user.first_name} сука умный')
-    bot.send_message(message.from_user.id, f'{message.from_user.first_name} {message.from_user.last_name}'
-                                           f', ты издеваешься?\n'
-                                           f'"{message.text}" спрашиваешь ты.\n ДА НЕ ЕБУ Я. Загугли!')
+    if message.text == 'Узнать Расписание':
+        bot.send_message(message.from_user.id, "Чьё расписание Вы хотите узнать?", reply_markup=kb.Timetable1)
+        bot.register_next_step_handler(message, timetable)
+    #elif message.text == 'Мои задания':
+       # register(message)
+    #elif message.text == 'Найти нужный отдел':
+       # bot.send_message(message.from_user.id,"Какой отдел Вас интересует?" )
+        #bot.register_next_step_handler(message, get_text_messages)
+    #elif message.text == 'Нажми если дебил':
+        #register(message)
+    else:
+        bot.send_message(message.from_user.id, "Я ещё не умею общаться")
+
+def timetable(message):
+    if message.text == 'Своё':
+        con = psycopg2.connect(**database_connect)
+        cursor = con.cursor()
+        cursor.execute("SELECT id FROM employee WHERE telegram=%s",
+                       [int(message.from_user.id)])
+        id = str(cursor.fetchall()[0][0])
+        print(id)
+        cursor.close()
+        con.close()
+        timetable_check(id, message.from_user.id)
+    else:
+        bot.send_message(message.from_user.id, "Укажите ФИО интересующего Вас работника")
+        bot.register_next_step_handler(message, FIO_check)
+
+def FIO_check(message):
+    record = []
+    listFIO = message.text.split()
+    con = psycopg2.connect(**database_connect)
+    cursor = con.cursor()
+    if len(listFIO) > 2:
+        last_name = listFIO[0]
+        first_name = listFIO[1]
+        patronymic = listFIO[2]
+        cursor.execute("SELECT id FROM employee WHERE first_name=%s AND last_name=%s AND patronymic=%s",
+                           [last_name, first_name, patronymic])
+        record=cursor.fetchall()
+    elif len(listFIO) == 2:
+        last_name = listFIO[0]
+        first_name = listFIO[1]
+        cursor.execute("SELECT id FROM employee WHERE first_name=%s AND last_name=%s", [first_name, last_name])
+        record=cursor.fetchall()
+    if record==[] or len(listFIO) < 2:
+        bot.send_message(message.from_user.id, f'Работника с именем {message.text} не найдено!')
+        bot.send_message(message.from_user.id, "Чьё расписание Вы хотите узнать?", reply_markup=kb.Timetable1)
+        bot.register_next_step_handler(message, timetable)
+    else:
+        id = str(record[0][0])
+        print(id)
+        timetable_check(id, message.from_user.id)
+    cursor.close()
+    con.close()
+
+
+def timetable_check(id, user_id):
+    now_date = str(datetime.fromtimestamp(int(time.time()))).split()[0]
+    now_time = str(datetime.fromtimestamp(int(time.time()))).split()[1]
+    print(now_date)
+    print(id)
+    con = psycopg2.connect(**database_connect)
+    cursor = con.cursor()
+    print(id)
+    cursor.execute("SELECT last_name, first_name, patronymic, department, workplace, position FROM employee WHERE id=%s ",
+                   [int(id)])
+    place=cursor.fetchall()
+    cursor.execute("SELECT time_start, time_end, appointments FROM timetable WHERE id=%s", [int(id)])
+    record = cursor.fetchall()
+    print(place)
+    print(record)
+    if record==[]:
+        bot.send_message(user_id, f'Сотрудник: {place[0][0]} {place[0][1]} {place[0][2]}\n'
+                                  f'Должность: {place[0][5]}\n'
+                                  f'Отдел: {place[0][3]} (Рабочее место №{place[0][4]})\n'
+                                  f'Данного работника уже нет на месте')
+    else:
+        bot.send_message(user_id, f'Сотрудник: {place[0][0]} {place[0][1]} {place[0][2]}\n'
+                                  f'Должность: {place[0][5]}\n'
+                                  f'Отдел: {place[0][3]} (Рабочее место №{place[0][4]})\n'
+                                  f'Время работы сегодня:')
+
+
 
 
