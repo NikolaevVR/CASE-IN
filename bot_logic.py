@@ -69,38 +69,46 @@ def write_teleID(message,email):
                                                "Введите свою рабочую почту, которую Вам выдали в отделе кадров.")
         bot.register_next_step_handler(message, ask_teleID)
 
+def get_my_id(user_id):
+    con = psycopg2.connect(**database_connect)
+    cursor = con.cursor()
+    cursor.execute("SELECT id FROM employee WHERE telegram=%s",
+                   [int(user_id)])
+    id = str(cursor.fetchall()[0][0])
+    print(id)
+    cursor.close()
+    con.close()
+    return id
 
 def Dialog(message):
     if message.text == 'Узнать Расписание':
         bot.send_message(message.from_user.id, "Чьё расписание Вы хотите узнать?", reply_markup=kb.Timetable1)
         bot.register_next_step_handler(message, timetable)
-    #elif message.text == 'Мои задания':
-       # register(message)
-    #elif message.text == 'Найти нужный отдел':
-       # bot.send_message(message.from_user.id,"Какой отдел Вас интересует?" )
-        #bot.register_next_step_handler(message, get_text_messages)
-    #elif message.text == 'Нажми если дебил':
-        #register(message)
+    elif message.text == 'Мои задания':
+        quests(message)
+    elif message.text == 'Найти нужный отдел':
+        bot.send_message(message.from_user.id, "Какой отдел Вас интересует?", reply_markup=kb.department_choice)
+        bot.register_next_step_handler(message, location_of_department)
+    elif message.text == 'Нажми если дебил':
+        bot.send_message(message.from_user.id, "Дебил бля", reply_markup=kb.Menu)
+        bot.send_message(message.from_user.id, "Можете задать мне вопрос или выбрать интересующий из списка:",
+                                                reply_markup=kb.StartQuestions)
+        bot.register_next_step_handler(message, Dialog)
     else:
         bot.send_message(message.from_user.id, "Я ещё не умею общаться")
 
 def timetable(message):
     if message.text == 'Своё':
-        con = psycopg2.connect(**database_connect)
-        cursor = con.cursor()
-        cursor.execute("SELECT id FROM employee WHERE telegram=%s",
-                       [int(message.from_user.id)])
-        id = str(cursor.fetchall()[0][0])
-        print(id)
-        cursor.close()
-        con.close()
-        timetable_check(id, message.from_user.id)
+        id = get_my_id(message.from_user.id)
+        timetable_check(id, message)
     else:
         bot.send_message(message.from_user.id, "Укажите ФИО интересующего Вас работника")
         bot.register_next_step_handler(message, FIO_check)
 
 def FIO_check(message):
     record = []
+    buf=message
+    print(buf)
     listFIO = message.text.split()
     con = psycopg2.connect(**database_connect)
     cursor = con.cursor()
@@ -123,12 +131,13 @@ def FIO_check(message):
     else:
         id = str(record[0][0])
         print(id)
-        timetable_check(id, message.from_user.id)
+        timetable_check(id, buf)
     cursor.close()
     con.close()
 
 
-def timetable_check(id, user_id):
+def timetable_check(id, message):
+    user_id = message.from_user.id
     now_date = str(datetime.fromtimestamp(int(time.time()))).split()[0]
     now_time = str(datetime.fromtimestamp(int(time.time()))).split()[1]
     print(now_date)
@@ -136,23 +145,123 @@ def timetable_check(id, user_id):
     con = psycopg2.connect(**database_connect)
     cursor = con.cursor()
     print(id)
-    cursor.execute("SELECT last_name, first_name, patronymic, department, workplace, position FROM employee WHERE id=%s ",
+    cursor.execute("SELECT last_name, first_name, patronymic, department, workplace, email, position "
+                   "FROM employee WHERE id=%s ",
                    [int(id)])
     place=cursor.fetchall()
-    cursor.execute("SELECT time_start, time_end, appointments FROM timetable WHERE id=%s", [int(id)])
+    cursor.execute("SELECT location FROM location_of_departments WHERE department=%s", [place[0][3]])
+    location=cursor.fetchall()
+    cursor.execute("SELECT time_start, time_end, appointments FROM timetable WHERE id=%s AND dat=%s", [id, now_date])
     record = cursor.fetchall()
     print(place)
     print(record)
     if record==[]:
-        bot.send_message(user_id, f'Сотрудник: {place[0][0]} {place[0][1]} {place[0][2]}\n'
-                                  f'Должность: {place[0][5]}\n'
-                                  f'Отдел: {place[0][3]} (Рабочее место №{place[0][4]})\n'
-                                  f'Данного работника уже нет на месте')
+        if id==get_my_id(user_id):
+            bot.send_message(user_id, f'Вы сегодня не работаете)',
+                             reply_markup=kb.Menu)
+        else:
+            bot.send_message(user_id, f'Сотрудник: {place[0][0]} {place[0][1]} {place[0][2]}\n'
+                                      f'Должность: {place[0][6]}\n'
+                                      f'Отдел: {place[0][3]} (Рабочее место №{place[0][4]})\n'
+                                      f'Находится по адресу: {location[0][0]}\n'
+                                      f'Вы можете связаться с работником по корпоративной почте: {place[0][5]}\n'
+                                      f'Данного работника уже нет на месте',
+                             reply_markup=kb.Menu)
+        bot.send_message(user_id, "Можете задать мне вопрос или выбрать интересующий из списка:",
+                         reply_markup=kb.StartQuestions)
+        bot.register_next_step_handler(message, Dialog)
     else:
-        bot.send_message(user_id, f'Сотрудник: {place[0][0]} {place[0][1]} {place[0][2]}\n'
-                                  f'Должность: {place[0][5]}\n'
-                                  f'Отдел: {place[0][3]} (Рабочее место №{place[0][4]})\n'
-                                  f'Время работы сегодня:')
+        if id==get_my_id(user_id):
+            bot.send_message(user_id, f'Время работы сегодня: {str(record[0][0])[:-3]}-{str(record[0][1])[:-3]}\n'
+                                      f'Сегодняшние мероприятия: {str(record[0][2])} ',
+                             reply_markup=kb.Menu)
+        else:
+            bot.send_message(user_id, f'Сотрудник: {place[0][0]} {place[0][1]} {place[0][2]}\n'
+                                      f'Должность: {place[0][6]}\n'
+                                      f'Отдел: {place[0][3]} (Рабочее место №{place[0][4]})\n'
+                                      f'Находится по адресу: {location[0][0]}\n'
+                                      f'Вы можете связаться с работником по корпоративной почте: {place[0][5]}\n'
+                                      f'Время работы сегодня: {str(record[0][0])[:-3]}-{str(record[0][1])[:-3]}\n'
+                                      f'Сегодняшние мероприятия: {str(record[0][2])} ',
+                             reply_markup=kb.Menu)
+        bot.send_message(user_id, "Можете задать мне вопрос или выбрать интересующий из списка:",
+                         reply_markup=kb.StartQuestions)
+        bot.register_next_step_handler(message, Dialog)
+    cursor.close()
+    con.close()
+
+def location_of_department(message):
+    con = psycopg2.connect(**database_connect)
+    cursor = con.cursor()
+    if "HR" in message.text:
+        cursor.execute("SELECT location, department FROM location_of_departments WHERE department=%s", ["HR"])
+        location = cursor.fetchall()
+    elif "IT" in message.text:
+        cursor.execute("SELECT location, department FROM location_of_departments WHERE department=%s", ["IT"])
+        location = cursor.fetchall()
+    elif "БУХГАЛТЕРСКИЙ" in message.text:
+        cursor.execute("SELECT location, department FROM location_of_departments WHERE department=%s", ["БУХГАЛТЕРСКИЙ"])
+        location = cursor.fetchall()
+    elif "ЗАКУПОК" in message.text:
+        cursor.execute("SELECT location, department FROM location_of_departments WHERE department=%s", ["ЗАКУПОК"])
+        location = cursor.fetchall()
+    elif "КАДРОВ" in message.text:
+        cursor.execute("SELECT location, department FROM location_of_departments WHERE department=%s", ["КАДРОВ"])
+        location = cursor.fetchall()
+    elif "КАЧЕСТВА" in message.text:
+        cursor.execute("SELECT location, department FROM location_of_departments WHERE department=%s", ["КАЧЕСТВА"])
+        location = cursor.fetchall()
+    elif "ЛОГИСТИКИ" in message.text:
+        cursor.execute("SELECT location, department FROM location_of_departments WHERE department=%s", ["ЛОГИСТИКИ"])
+        location = cursor.fetchall()
+    elif "РАЗВИТИЯ" in message.text:
+        cursor.execute("SELECT location, department FROM location_of_departments WHERE department=%s", ["РАЗВИТИЯ"])
+        location = cursor.fetchall()
+    elif "ТОРГОВЫЙ" in message.text:
+        cursor.execute("SELECT location, department FROM location_of_departments WHERE department=%s", ["ТОРГОВЫЙ"])
+        location = cursor.fetchall()
+    elif "ФИНАНСОВ" in message.text:
+        cursor.execute("SELECT location, department FROM location_of_departments WHERE department=%s", ["ФИНАНСОВ"])
+        location = cursor.fetchall()
+    elif "ЮРИДИЧЕСКИЙ" in message.text:
+        cursor.execute("SELECT location, department FROM location_of_departments WHERE department=%s", ["ЮРИДИЧЕСКИЙ"])
+        location = cursor.fetchall()
+    else:
+        location = []
+    if location == []:
+        bot.send_message(message.from_user.id,"Такого отдела не существует, выберете отдел из Меню ниже\n"
+                                              "Какой отдел Вас интересует?", reply_markup=kb.department_choice )
+        bot.register_next_step_handler(message, location_of_department)
+    else:
+        bot.send_message(message.from_user.id, f'Отдел {location[0][1]} находится по адресу: {location[0][0]}',
+                     reply_markup=kb.Menu)
+        bot.send_message(message.from_user.id, "Можете задать мне вопрос или выбрать интересующий из списка:",
+                         reply_markup=kb.StartQuestions)
+        bot.register_next_step_handler(message, Dialog)
+    cursor.close()
+    con.close()
+
+def quests(message):
+    id = get_my_id(message.from_user.id)
+    con = psycopg2.connect(**database_connect)
+    cursor = con.cursor()
+    cursor.execute("SELECT task, done, inspection FROM cases WHERE id=%s", [id])
+    my_qests = cursor.fetchall()
+    if my_qests == []:
+        bot.send_message(message.from_user.id,"У Вас нет заданий на текущий момент")
+        bot.send_message(message.from_user.id, "Можете задать мне вопрос или выбрать интересующий из списка:",
+                         reply_markup=kb.StartQuestions)
+        bot.register_next_step_handler(message, Dialog)
+    else:
+        bot.send_message(message.from_user.id, f'Ваши задания на текущий период: {my_qests[0][0]} \n'
+                                               f'Выполненные задания:  {my_qests[0][1]} \n'
+                                               f'Результат: {my_qests[0][2]}',
+                     reply_markup=kb.Menu)
+        bot.send_message(message.from_user.id, "Можете задать мне вопрос или выбрать интересующий из списка:",
+                         reply_markup=kb.StartQuestions)
+        bot.register_next_step_handler(message, Dialog)
+    cursor.close()
+    con.close()
 
 
 
