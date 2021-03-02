@@ -201,11 +201,7 @@ def timetable_check(id, message):
 def location_of_department(message):
     con = psycopg2.connect(**database_connect)
     cursor = con.cursor()
-    if "HR" in message.text:
-        cursor.execute("SELECT location, department, telephone FROM location_of_departments WHERE department=%s",
-                       ["HR"])
-        location = cursor.fetchall()
-    elif "IT" in message.text:
+    if "IT" in message.text:
         cursor.execute("SELECT location, department, telephone FROM location_of_departments WHERE department=%s",
                        ["IT"])
         location = cursor.fetchall()
@@ -252,7 +248,7 @@ def location_of_department(message):
                                               "Какой отдел Вас интересует?", reply_markup=kb.department_choice )
         bot.register_next_step_handler(message, location_of_department)
     else:
-        first=["HR", "IT", "БУХГАЛТЕРСКИЙ", "ТОРГОВЫЙ", "ЮРИДИЧЕСКИЙ"]
+        first=["IT", "БУХГАЛТЕРСКИЙ", "ТОРГОВЫЙ", "ЮРИДИЧЕСКИЙ"]
         if message.text  in first:
             bot.send_message(message.from_user.id, f'{location[0][1]} отдел находится по адресу:\n {location[0][0]}\n'
                                                    f'Телефон для связи: {location[0][2]}',
