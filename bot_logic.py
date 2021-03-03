@@ -30,10 +30,12 @@ def get_text_messages(message):
     cursor.close()
     con.close()
 
+
 def register(message):
     bot.send_message(message.from_user.id, "Здравствуйте! Мы не знакомы, давайте познакомимся."
                                            " Введите свою рабочую почту, которую Вам выдали в отделе кадров.")
     bot.register_next_step_handler(message, ask_teleID)
+
 
 def ask_teleID(message):
     con = psycopg2.connect(**database_connect)
@@ -74,6 +76,7 @@ def write_teleID(message,email):
                                                "Введите свою рабочую почту, которую Вам выдали в отделе кадров.")
         bot.register_next_step_handler(message, ask_teleID)
 
+
 def get_my_id(user_id):
     con = psycopg2.connect(**database_connect)
     cursor = con.cursor()
@@ -83,6 +86,7 @@ def get_my_id(user_id):
     cursor.close()
     con.close()
     return id
+
 
 def Dialog(message):
     if message.text == 'Узнать Расписание':
@@ -101,6 +105,7 @@ def Dialog(message):
                                                 reply_markup=kb.Menu)
         bot.register_next_step_handler(message, Dialog)
 
+
 def timetable(message):
     if message.text == 'Своё':
         id = get_my_id(message.from_user.id)
@@ -114,28 +119,58 @@ def timetable(message):
         bot.send_message(message.from_user.id, "Укажите ФИО интересующего Вас работника")
         bot.register_next_step_handler(message, FIO_check)
 
+
 def FIO_check(message):
     record = []
+    persons=''
     buf=message
     listFIO = message.text.split()
     con = psycopg2.connect(**database_connect)
     cursor = con.cursor()
     if len(listFIO) > 2:
-        last_name = listFIO[0]
-        first_name = listFIO[1]
-        patronymic = listFIO[2]
-        cursor.execute("SELECT id FROM employee WHERE first_name=%s AND last_name=%s AND patronymic=%s",
-                           [last_name, first_name, patronymic])
+        first_word = str(listFIO[0]).lower()
+        first_word = first_word.title()
+        second_word = str(listFIO[1]).lower()
+        second_word = second_word.title()
+        third_word = str(listFIO[2]).lower()
+        third_word = third_word.title()
+        cursor.execute("SELECT id, first_name, last_name, patronymic FROM employee "
+                       "WHERE last_name=%s AND first_name=%s AND patronymic=%s",
+                           [first_word, second_word, third_word])
         record=cursor.fetchall()
+        if record == []:
+            cursor.execute("SELECT id, first_name, last_name, patronymic FROM employee "
+                           "WHERE first_name=%s AND patronymic=%s AND last_name=%s",
+                           [first_word, second_word, third_word])
+            record = cursor.fetchall()
     elif len(listFIO) == 2:
-        last_name = listFIO[0]
-        first_name = listFIO[1]
-        cursor.execute("SELECT id FROM employee WHERE first_name=%s AND last_name=%s", [first_name, last_name])
+        first_word = str(listFIO[0]).lower()
+        first_word = first_word.title()
+        second_word = str(listFIO[1]).lower()
+        second_word = second_word.title()
+        cursor.execute("SELECT id, first_name, last_name, patronymic FROM employee WHERE "
+                       "first_name=%s AND last_name=%s", [first_word, second_word])
         record=cursor.fetchall()
+        if record == []:
+            cursor.execute("SELECT id, first_name, last_name, patronymic FROM employee "
+                           "WHERE last_name=%s AND first_name=%s",[first_word, second_word])
+            record = cursor.fetchall()
+            if record == []:
+                cursor.execute("SELECT id, first_name, last_name, patronymic FROM employee "
+                               "WHERE first_name=%s AND patronymic=%s",
+                               [first_word, second_word])
+                record = cursor.fetchall()
     if record==[] or len(listFIO) < 2:
         bot.send_message(message.from_user.id, f'Работника с именем {message.text} не найдено!')
         bot.send_message(message.from_user.id, "Чьё расписание Вы хотите узнать?", reply_markup=kb.Timetable1)
         bot.register_next_step_handler(message, timetable)
+    elif len(record)> 1 and len(listFIO) == 2:
+        for a in range(len(record)):
+            persons = persons + f'{record [a][2]}  {record [a][1]}  {record [a][3]}\n'
+        bot.send_message(message.from_user.id, f'По Вашему запросу найдено несколько работников: \n{persons}')
+        bot.send_message(message.from_user.id, f'Уточникте пожалуйста\n'
+                                               f'Чьё расписание Вы хотите узнать?')
+        timetable(message)
     else:
         id = str(record[0][0])
         timetable_check(id, buf)
@@ -147,9 +182,6 @@ def timetable_check(id, message):
     user_id = message.from_user.id
     now_date = str(dt.fromtimestamp(int(time.time()))).split()[0]
     now_time = t.fromisoformat(str(dt.fromtimestamp(int(time.time()))).split()[1])
-    first_date = str(dt.now()+ timedelta(days=1)).split()[0]
-    second_date = str(dt.now()+ timedelta(days=2)).split()[0]
-    third_date = str(dt.now()+ timedelta(days=3)).split()[0]
     con = psycopg2.connect(**database_connect)
     cursor = con.cursor()
     cursor.execute("SELECT last_name, first_name, patronymic, department, workplace, email, position "
@@ -163,33 +195,35 @@ def timetable_check(id, message):
     record = cursor.fetchall()
     other_days = ''
     cursor.execute("SELECT dat, time_start, time_end FROM timetable WHERE id=%s AND dat>%s ORDER BY dat",
-                    [id, first_date])
+                    [id, now_date])
     record1 = cursor.fetchall()[:3]
+    cursor.close()
+    con.close()
     if record1 != []:
-        first_date = record1[0][0]
-        first_date = first_date.strftime('%d.%m.%Y %H:%M:%S').split()[0]
-        other_days = other_days + f'{first_date}:    {str(record1[0][1])[:-3]}-{str(record1[0][2])[:-3]}\n'
-        second_date = record1[1][0]
-        second_date = second_date.strftime('%d.%m.%Y %H:%M:%S').split()[0]
-        other_days = other_days + f'{second_date}:    {str(record1[1][1])[:-3]}-{str(record1[1][2])[:-3]}\n'
-        third_date = record1[2][0]
-        third_date = third_date.strftime('%d.%m.%Y %H:%M:%S').split()[0]
-        other_days = other_days + f'{third_date}:    {str(record1[2][1])[:-3]}-{str(record1[2][2])[:-3]}\n'
+        first_day = record1[0][0]
+        first_day = first_day.strftime('%d.%m.%Y %H:%M:%S').split()[0]
+        other_days = other_days + f'{first_day}:    {str(record1[0][1])[:-3]}-{str(record1[0][2])[:-3]}\n'
+        second_day = record1[1][0]
+        second_day = second_day.strftime('%d.%m.%Y %H:%M:%S').split()[0]
+        other_days = other_days + f'{second_day}:    {str(record1[1][1])[:-3]}-{str(record1[1][2])[:-3]}\n'
+        third_day = record1[2][0]
+        third_day = third_day.strftime('%d.%m.%Y %H:%M:%S').split()[0]
+        other_days = other_days + f'{third_day}:    {str(record1[2][1])[:-3]}-{str(record1[2][2])[:-3]}\n'
     if other_days == '':
         other_days = 'Нет данных о расписании на ближайшие дни'
     if record==[]:
         if id==get_my_id(user_id):
-            bot.send_message(user_id, f'Вы сегодня не работаете)\n'
+            bot.send_message(user_id, f'Вы сегодня не работаете)\n\n'
                                       f'Расписание на пару дней вперёд:\n'
                                       f'{other_days}',
                              reply_markup=kb.Menu)
         else:
             bot.send_message(user_id, f'Сотрудник: {place[0][0]} {place[0][1]} {place[0][2]}\n'
                                       f'Должность: {place[0][6]}\n'
-                                      f'Отдел: {place[0][3]} (Рабочее место №{place[0][4]})\n'
+                                      f'Отдел: {place[0][3]} (Рабочее место №{place[0][4]})\n\n'
                                       f'Находится по адресу: {location[0][0]}\n'
                                       f'Вы можете связаться с работником по корпоративной почте: {place[0][5]}\n'
-                                      f'Данного работника нет на месте\n'
+                                      f'Данного работника нет на месте\n\n'
                                       f'Расписание на пару дней вперёд:\n'
                                       f'{other_days}',
                              reply_markup=kb.Menu)
@@ -199,26 +233,25 @@ def timetable_check(id, message):
     else:
         if id==get_my_id(user_id):
             bot.send_message(user_id, f'Время работы сегодня: {str(record[0][0])[:-3]}-{str(record[0][1])[:-3]}\n'
-                                      f'Сегодняшние мероприятия: {str(record[0][2])} \n'
+                                      f'Сегодняшние мероприятия: {str(record[0][2])} \n\n'
                                       f'Расписание на пару дней вперёд:\n'
                                       f'{other_days}',
                              reply_markup=kb.Menu)
         else:
             bot.send_message(user_id, f'Сотрудник: {place[0][0]} {place[0][1]} {place[0][2]}\n'
                                       f'Должность: {place[0][6]}\n'
-                                      f'Отдел: {place[0][3]} (Рабочее место №{place[0][4]})\n'
+                                      f'Отдел: {place[0][3]} (Рабочее место №{place[0][4]})\n\n'
                                       f'Находится по адресу: {location[0][0]}\n'
-                                      f'Вы можете связаться с работником по корпоративной почте: {place[0][5]}\n'
+                                      f'Вы можете связаться с работником по корпоративной почте: {place[0][5]}\n\n'
                                       f'Время работы сегодня: {str(record[0][0])[:-3]}-{str(record[0][1])[:-3]}\n'
-                                      f'Сегодняшние мероприятия: {str(record[0][2])} \n'
+                                      f'Сегодняшние мероприятия: {str(record[0][2])} \n\n'
                                       f'Расписание на пару дней вперёд:\n'
                                       f'{other_days}',
                              reply_markup=kb.Menu)
         bot.send_message(user_id, "Можете задать мне вопрос или выбрать интересующий из списка:",
                          reply_markup=kb.StartQuestions)
         bot.register_next_step_handler(message, Dialog)
-    cursor.close()
-    con.close()
+
 
 def location_of_department(message):
     con = psycopg2.connect(**database_connect)
@@ -285,6 +318,7 @@ def location_of_department(message):
     cursor.close()
     con.close()
 
+
 def quests(message):
     id = get_my_id(message.from_user.id)
     con = psycopg2.connect(**database_connect)
@@ -332,6 +366,7 @@ def quests(message):
     cursor.close()
     con.close()
 
+
 def quest_choice(message):
     id=get_my_id(message.from_user.id)
     con = psycopg2.connect(**database_connect)
@@ -357,6 +392,7 @@ def quest_choice(message):
         bot.register_next_step_handler(message, Status_Change)
     cursor.close()
     con.close()
+
 
 def Status_Change(message):
     id = get_my_id(message.from_user.id)
