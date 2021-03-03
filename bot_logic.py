@@ -94,16 +94,7 @@ def Dialog(message):
         bot.send_message(message.from_user.id, "Какой отдел Вас интересует?", reply_markup=kb.department_choice)
         bot.register_next_step_handler(message, location_of_department)
     elif message.text == 'Отметить задание как выполненное':
-        con = psycopg2.connect(**database_connect)
-        cursor = con.cursor()
-        cursor.execute("UPDATE cases SET done=%s WHERE id=%s", ["Задание выполнено", get_my_id(message.from_user.id)])
-        con.commit()
-        cursor.close()
-        con.close()
-        bot.send_message(message.from_user.id, "Выполнение отмечено, ожидайте результатов", reply_markup=kb.Menu)
-        bot.send_message(message.from_user.id, "Можете задать мне вопрос или выбрать интересующий из списка:",
-                                                reply_markup=kb.StartQuestions)
-        bot.register_next_step_handler(message, Dialog)
+        quest_choice(message)
     else:
         bot.send_message(message.from_user.id, bright(str(message.text)))
         bot.send_message(message.from_user.id, "Что-то ещё?",
@@ -115,7 +106,7 @@ def timetable(message):
         id = get_my_id(message.from_user.id)
         timetable_check(id, message)
     elif message.text == 'Вернуться':
-        bot.send_message(message.from_user.id, "Выходим отсюда потихому", reply_markup=kb.Menu)
+        bot.send_message(message.from_user.id, "Выход в главное меню", reply_markup=kb.Menu)
         bot.send_message(message.from_user.id, "Можете задать мне вопрос или выбрать интересующий из списка:",
                          reply_markup=kb.StartQuestions)
         bot.register_next_step_handler(message, Dialog)
@@ -300,7 +291,6 @@ def quests(message):
     cursor = con.cursor()
     cursor.execute("SELECT task, done, url_tests, inspection FROM cases WHERE id=%s", [id])
     my_qests = cursor.fetchall()
-    print(my_qests)
     qests = ''
     qests1 = ''
     if my_qests == []:
@@ -309,7 +299,7 @@ def quests(message):
                          reply_markup=kb.StartQuestions)
         bot.register_next_step_handler(message, Dialog)
     else:
-        bot.send_message(message.from_user.id, f'Информация по заданиям представлена ниже', reply_markup=kb.Menu)
+        bot.send_message(message.from_user.id, f'Информация по заданиям представлена ниже', reply_markup=kb.Quests)
         Tests_url = types.InlineKeyboardMarkup()
         item1 = types.InlineKeyboardButton(text='Пройти тестирование', url=f'{my_qests[0][1]}')
         Tests_url.add(item1)
@@ -333,17 +323,72 @@ def quests(message):
                 Tests_url.add(item[b])
         bot.send_message(message.from_user.id, f'Ваши задания на текущий период: \n\n'
                                                f'Выполненные задания: \n'
-                                               f'{qests}\n\n'
+                                               f'{qests}\n'
                                                f'В процессе: \n'
                                                f'{qests1}\n\n',
                          reply_markup=Tests_url)
-        # bot.send_message(message.from_user.id, f'Ваши задания на текущий период: {my_qests[a][0]} \n'
-        #                                                f'Результат: {my_qests[a][2]}', reply_markup=Tests_url)
-        # bot.send_message(message.from_user.id, "Можете задать мне вопрос или выбрать интересующий из списка:",
-        #                  reply_markup=kb.StartQuestions)
-        # bot.register_next_step_handler(message, Dialog)
+
+        bot.register_next_step_handler(message, fork)
     cursor.close()
     con.close()
+
+def quest_choice(message):
+    id=get_my_id(message.from_user.id)
+    con = psycopg2.connect(**database_connect)
+    cursor = con.cursor()
+    cursor.execute("SELECT task FROM cases WHERE id=%s AND done IS NULL", [id])
+    case = cursor.fetchall()
+    item=[]
+    if case == []:
+        bot.send_message(message.from_user.id, "У Вас нет заданий на текущий момент")
+        bot.send_message(message.from_user.id, "Можете задать мне вопрос или выбрать интересующий из списка:",
+                         reply_markup=kb.StartQuestions)
+        bot.register_next_step_handler(message, Dialog)
+    else:
+        for a in range(len(case)):
+            item1 = types.KeyboardButton(f'{case[a][0]}')
+            item.append(item1)
+        item0 = types.KeyboardButton("Вернуться")
+        Change_Status = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+        for b in range(len(item)):
+            Change_Status.add(item[b])
+        Change_Status.add(item0)
+        bot.send_message(message.from_user.id, f'Какое из заданий вы выполнили?', reply_markup=Change_Status)
+        bot.register_next_step_handler(message, Status_Change)
+    cursor.close()
+    con.close()
+
+def Status_Change(message):
+    id = get_my_id(message.from_user.id)
+    task = message.text
+    if task=="Вернуться":
+        bot.send_message(message.from_user.id, "Выход в главное меню",
+                         reply_markup=kb.Menu)
+        bot.send_message(message.from_user.id, "Можете задать мне вопрос или выбрать интересующий из списка:",
+                         reply_markup=kb.StartQuestions)
+        bot.register_next_step_handler(message, Dialog)
+    else:
+        con = psycopg2.connect(**database_connect)
+        cursor = con.cursor()
+        cursor.execute("UPDATE cases SET done=%s WHERE id=%s AND task=%s ", ["Задание выполнено", id, task])
+        con.commit()
+        cursor.close()
+        con.close()
+        bot.send_message(message.from_user.id, "Выполнение отмечено, ожидайте результатов проверки",
+                         reply_markup=kb.Menu)
+        bot.send_message(message.from_user.id, "Можете задать мне вопрос или выбрать интересующий из списка:",
+                         reply_markup=kb.StartQuestions)
+        bot.register_next_step_handler(message, Dialog)
+
+
+def fork(message):
+    if message.text=='Отметить задание как выполненное':
+        quest_choice(message)
+    else:
+        bot.send_message(message.from_user.id, "Выход в главное меню", reply_markup=kb.Menu)
+        bot.send_message(message.from_user.id, "Можете задать мне вопрос или выбрать интересующий из списка:",
+                         reply_markup=kb.StartQuestions)
+        bot.register_next_step_handler(message, Dialog)
 
 
 

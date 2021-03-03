@@ -51,5 +51,10 @@ department_choice.add(item4, item6)
 department_choice.add(item7, item8)
 department_choice.add(item9, item10)
 
+Quests = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+item1 = types.KeyboardButton("Отметить задание как выполненное")
+item2 = types.KeyboardButton("Вернуться")
+Quests.add(item1, item2)
+
 
 
