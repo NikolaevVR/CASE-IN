@@ -2,11 +2,14 @@ import telebot
 import psycopg2
 import keyboards as kb
 from config import bot_api, database_connect
-from datetime import datetime
+from datetime import datetime as dt
 from datetime import date
+from datetime import timedelta
+import time
+from datetime import time as t
 from telebot import types
 from TelegramBot import *
-import time
+
 
 bot = telebot.TeleBot(bot_api)
 
@@ -35,8 +38,8 @@ def register(message):
 def ask_teleID(message):
     con = psycopg2.connect(**database_connect)
     cursor = con.cursor()
-    email=str(message.text)
-    cursor.execute("SELECT last_name, first_name FROM employee WHERE email=%s", [str(message.text)])
+    email=str(message.text).lower()
+    cursor.execute("SELECT last_name, first_name FROM employee WHERE email=%s", [email])
     record=cursor.fetchall()
     if record==[]:
         bot.send_message(message.from_user.id, "Кажется, Вы ввели неправильную почту."
@@ -90,7 +93,7 @@ def Dialog(message):
     elif message.text == 'Найти нужный отдел':
         bot.send_message(message.from_user.id, "Какой отдел Вас интересует?", reply_markup=kb.department_choice)
         bot.register_next_step_handler(message, location_of_department)
-    elif message.text == 'Отметить задание как выполненое':
+    elif message.text == 'Отметить задание как выполненное':
         con = psycopg2.connect(**database_connect)
         cursor = con.cursor()
         cursor.execute("UPDATE cases SET done=%s WHERE id=%s", ["Задание выполнено", get_my_id(message.from_user.id)])
@@ -151,8 +154,11 @@ def FIO_check(message):
 
 def timetable_check(id, message):
     user_id = message.from_user.id
-    now_date = str(datetime.fromtimestamp(int(time.time()))).split()[0]
-    now_time = str(datetime.fromtimestamp(int(time.time()))).split()[1]
+    now_date = str(dt.fromtimestamp(int(time.time()))).split()[0]
+    now_time = t.fromisoformat(str(dt.fromtimestamp(int(time.time()))).split()[1])
+    first_date = str(dt.now()+ timedelta(days=1)).split()[0]
+    second_date = str(dt.now()+ timedelta(days=2)).split()[0]
+    third_date = str(dt.now()+ timedelta(days=3)).split()[0]
     con = psycopg2.connect(**database_connect)
     cursor = con.cursor()
     cursor.execute("SELECT last_name, first_name, patronymic, department, workplace, email, position "
@@ -161,11 +167,30 @@ def timetable_check(id, message):
     place=cursor.fetchall()
     cursor.execute("SELECT location FROM location_of_departments WHERE department=%s", [place[0][3]])
     location=cursor.fetchall()
-    cursor.execute("SELECT time_start, time_end, appointments FROM timetable WHERE id=%s AND dat=%s", [id, now_date])
+    cursor.execute("SELECT time_start, time_end, appointments FROM timetable WHERE id=%s AND dat=%s AND time_end>%s",
+                    [id, now_date, now_time])
     record = cursor.fetchall()
+    other_days = ''
+    cursor.execute("SELECT dat, time_start, time_end FROM timetable WHERE id=%s AND dat>%s ORDER BY dat",
+                    [id, first_date])
+    record1 = cursor.fetchall()[:3]
+    if record1 != []:
+        first_date = record1[0][0]
+        first_date = first_date.strftime('%d.%m.%Y %H:%M:%S').split()[0]
+        other_days = other_days + f'{first_date}:    {str(record1[0][1])[:-3]}-{str(record1[0][2])[:-3]}\n'
+        second_date = record1[1][0]
+        second_date = second_date.strftime('%d.%m.%Y %H:%M:%S').split()[0]
+        other_days = other_days + f'{second_date}:    {str(record1[1][1])[:-3]}-{str(record1[1][2])[:-3]}\n'
+        third_date = record1[2][0]
+        third_date = third_date.strftime('%d.%m.%Y %H:%M:%S').split()[0]
+        other_days = other_days + f'{third_date}:    {str(record1[2][1])[:-3]}-{str(record1[2][2])[:-3]}\n'
+    if other_days == '':
+        other_days = 'Нет данных о расписании на ближайшие дни'
     if record==[]:
         if id==get_my_id(user_id):
-            bot.send_message(user_id, f'Вы сегодня не работаете)',
+            bot.send_message(user_id, f'Вы сегодня не работаете)\n'
+                                      f'Расписание на пару дней вперёд:\n'
+                                      f'{other_days}',
                              reply_markup=kb.Menu)
         else:
             bot.send_message(user_id, f'Сотрудник: {place[0][0]} {place[0][1]} {place[0][2]}\n'
@@ -173,7 +198,9 @@ def timetable_check(id, message):
                                       f'Отдел: {place[0][3]} (Рабочее место №{place[0][4]})\n'
                                       f'Находится по адресу: {location[0][0]}\n'
                                       f'Вы можете связаться с работником по корпоративной почте: {place[0][5]}\n'
-                                      f'Данного работника уже нет на месте',
+                                      f'Данного работника нет на месте\n'
+                                      f'Расписание на пару дней вперёд:\n'
+                                      f'{other_days}',
                              reply_markup=kb.Menu)
         bot.send_message(user_id, "Можете задать мне вопрос или выбрать интересующий из списка:",
                          reply_markup=kb.StartQuestions)
@@ -181,7 +208,9 @@ def timetable_check(id, message):
     else:
         if id==get_my_id(user_id):
             bot.send_message(user_id, f'Время работы сегодня: {str(record[0][0])[:-3]}-{str(record[0][1])[:-3]}\n'
-                                      f'Сегодняшние мероприятия: {str(record[0][2])} ',
+                                      f'Сегодняшние мероприятия: {str(record[0][2])} \n'
+                                      f'Расписание на пару дней вперёд:\n'
+                                      f'{other_days}',
                              reply_markup=kb.Menu)
         else:
             bot.send_message(user_id, f'Сотрудник: {place[0][0]} {place[0][1]} {place[0][2]}\n'
@@ -190,7 +219,9 @@ def timetable_check(id, message):
                                       f'Находится по адресу: {location[0][0]}\n'
                                       f'Вы можете связаться с работником по корпоративной почте: {place[0][5]}\n'
                                       f'Время работы сегодня: {str(record[0][0])[:-3]}-{str(record[0][1])[:-3]}\n'
-                                      f'Сегодняшние мероприятия: {str(record[0][2])} ',
+                                      f'Сегодняшние мероприятия: {str(record[0][2])} \n'
+                                      f'Расписание на пару дней вперёд:\n'
+                                      f'{other_days}',
                              reply_markup=kb.Menu)
         bot.send_message(user_id, "Можете задать мне вопрос или выбрать интересующий из списка:",
                          reply_markup=kb.StartQuestions)
@@ -269,32 +300,50 @@ def quests(message):
     cursor = con.cursor()
     cursor.execute("SELECT task, done, url_tests, inspection FROM cases WHERE id=%s", [id])
     my_qests = cursor.fetchall()
+    print(my_qests)
+    qests = ''
+    qests1 = ''
     if my_qests == []:
         bot.send_message(message.from_user.id,"У Вас нет заданий на текущий момент")
         bot.send_message(message.from_user.id, "Можете задать мне вопрос или выбрать интересующий из списка:",
                          reply_markup=kb.StartQuestions)
         bot.register_next_step_handler(message, Dialog)
     else:
-        bot.send_message(message.from_user.id, f'Информация по заданию представлена ниже', reply_markup=kb.Menu)
+        bot.send_message(message.from_user.id, f'Информация по заданиям представлена ниже', reply_markup=kb.Menu)
         Tests_url = types.InlineKeyboardMarkup()
-        item1 = types.InlineKeyboardButton(text='Пройти тестирование', url=f'{my_qests[0][2]}')
+        item1 = types.InlineKeyboardButton(text='Пройти тестирование', url=f'{my_qests[0][1]}')
         Tests_url.add(item1)
-        if my_qests[0][1]=='Задание выполнено':
-            bot.send_message(message.from_user.id, f'Ваши задания на текущий период: {my_qests[0][0]} \n'
-                                                   f'Статус задания:  {my_qests[0][1]} \n'
-                                                   f'Результат: {my_qests[0][3]}\n'
-                                                   f'Задание уже выполнено, ожидайте результатов')
-        else:
-            bot.send_message(message.from_user.id, f'Ваши задания на текущий период: {my_qests[0][0]} \n'
-                                                   f'Статус задания:  {my_qests[0][1]} \n'
-                                                   f'Результат: {my_qests[0][3]}',
-                             reply_markup=Tests_url)
-        bot.send_message(message.from_user.id, "Можете задать мне вопрос или выбрать интересующий из списка:",
-                         reply_markup=kb.StartQuestions)
-        bot.register_next_step_handler(message, Dialog)
+        item=[]
+        for a in range(len(my_qests)):
+            if my_qests[a][1] == 'Задание выполнено':
+                qests = qests + f'{my_qests[a][0]}          {my_qests[a][3]} \n'
+                if len(my_qests[a][2]) > 5:
+                    item1 = types.InlineKeyboardButton(text=f'Тест задания {my_qests[a][0]}', url=my_qests[a][2])
+                    item.append(item1)
+            else:
+                qests1 = qests1 + f'{my_qests[a][0]}\n'
+
+        if qests == '':
+            qests = 'Выполненные задания отсутствуют'
+        if qests1 == '':
+            qests1 = 'Не завершённые задания отсутствуют'
+        if item != []:
+            Tests_url = types.InlineKeyboardMarkup()
+            for b in range(len(item)):
+                Tests_url.add(item[b])
+        bot.send_message(message.from_user.id, f'Ваши задания на текущий период: \n\n'
+                                               f'Выполненные задания: \n'
+                                               f'{qests}\n\n'
+                                               f'В процессе: \n'
+                                               f'{qests1}\n\n',
+                         reply_markup=Tests_url)
+        # bot.send_message(message.from_user.id, f'Ваши задания на текущий период: {my_qests[a][0]} \n'
+        #                                                f'Результат: {my_qests[a][2]}', reply_markup=Tests_url)
+        # bot.send_message(message.from_user.id, "Можете задать мне вопрос или выбрать интересующий из списка:",
+        #                  reply_markup=kb.StartQuestions)
+        # bot.register_next_step_handler(message, Dialog)
     cursor.close()
     con.close()
-
 
 
 

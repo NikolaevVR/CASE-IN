@@ -23,7 +23,7 @@ Menu = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
 item1 = types.KeyboardButton("Узнать Расписание")
 item2 = types.KeyboardButton("Мои задания")
 item3 = types.KeyboardButton("Найти нужный отдел")
-item4 = types.KeyboardButton("Отметить задание как выполненое")
+item4 = types.KeyboardButton("Отметить задание как выполненное")
 Menu.add(item1, item2)
 Menu.add(item3, item4)
 
