@@ -1,9 +1,3 @@
-#!/usr/bin/env python
-# coding: utf-8
-
-# In[4]:
-
-
 import random
 import nltk
 from sklearn.svm import LinearSVC
