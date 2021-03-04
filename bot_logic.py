@@ -3,8 +3,6 @@ import psycopg2
 import keyboards as kb
 from config import bot_api, database_connect
 from datetime import datetime as dt
-from datetime import date
-from datetime import timedelta
 import time
 from datetime import time as t
 from telebot import types
@@ -20,15 +18,13 @@ def get_text_messages(message):
     cursor = con.cursor()
     cursor.execute("SELECT * FROM employee WHERE telegram=%s",[user_id])
     record = cursor.fetchall()
+    cursor.close()
+    con.close()
     if record==[]:
         register(message)
     else:
         bot.send_message(message.from_user.id, "Приветствую", reply_markup=kb.Menu)
-        bot.send_message(message.from_user.id, "Можете задать мне вопрос или выбрать интересующий из списка:",
-                                                reply_markup=kb.StartQuestions)
-        bot.register_next_step_handler(message, Dialog)
-    cursor.close()
-    con.close()
+        Dialog(message)
 
 
 def register(message):
@@ -43,6 +39,8 @@ def ask_teleID(message):
     email=str(message.text).lower()
     cursor.execute("SELECT last_name, first_name FROM employee WHERE email=%s", [email])
     record=cursor.fetchall()
+    cursor.close()
+    con.close()
     if record==[]:
         bot.send_message(message.from_user.id, "Кажется, Вы ввели неправильную почту."
                                                " Введите свою рабочую почту, которую Вам выдали в отделе кадров.")
@@ -54,8 +52,6 @@ def ask_teleID(message):
                 rec = rec + a[b] + ' '
         bot.send_message(message.from_user.id, f'{rec} - это Вы?', reply_markup=kb.YesNoMenu)
         bot.register_next_step_handler(message, write_teleID, email)
-    cursor.close()
-    con.close()
 
 
 def write_teleID(message,email):
@@ -66,11 +62,9 @@ def write_teleID(message,email):
         con.commit()
         cursor.close()
         con.close()
-        bot.send_message(message.from_user.id, "Рад приветствовать Вас в нашей компании!", reply_markup=kb.Menu)
-        bot.send_message(message.from_user.id, "Я помогу Вам освоиться и узнать как всё устроено.\n"
-                                                "Можете задать мне вопрос или выбрать интересующий из списка:",
-                                                reply_markup=kb.StartQuestions)
-        bot.register_next_step_handler(message, Dialog)
+        bot.send_message(message.from_user.id, "Рад приветствовать Вас в нашей компании! \n"
+                                            "Я помогу Вам освоиться и узнать как всё устроено.", reply_markup=kb.Menu)
+        Dialog(message)
     else:
         bot.send_message(message.from_user.id, "Кажется, Вы ввели неправильную почту.\n"
                                                "Введите свою рабочую почту, которую Вам выдали в отделе кадров.")
@@ -88,7 +82,13 @@ def get_my_id(user_id):
     return id
 
 
-def Dialog(message):
+def Dialog (message):
+    bot.send_message(message.from_user.id, "Можете задать мне вопрос или выбрать интересующий из списка:",
+                     reply_markup=kb.StartQuestions)
+    bot.register_next_step_handler(message, Menu)
+
+
+def Menu(message):
     if message.text == 'Узнать Расписание':
         bot.send_message(message.from_user.id, "Чьё расписание Вы хотите узнать?", reply_markup=kb.Timetable1)
         bot.register_next_step_handler(message, timetable)
@@ -100,10 +100,8 @@ def Dialog(message):
     elif message.text == 'Отметить задание как выполненное':
         quest_choice(message)
     else:
-        bot.send_message(message.from_user.id, bright(str(message.text)))
-        bot.send_message(message.from_user.id, "Что-то ещё?",
-                                                reply_markup=kb.Menu)
-        bot.register_next_step_handler(message, Dialog)
+        bot.send_message(message.from_user.id, bright(str(message.text)), reply_markup=kb.Menu)
+        Dialog(message)
 
 
 def timetable(message):
@@ -112,9 +110,7 @@ def timetable(message):
         timetable_check(id, message)
     elif message.text == 'Вернуться':
         bot.send_message(message.from_user.id, "Выход в главное меню", reply_markup=kb.Menu)
-        bot.send_message(message.from_user.id, "Можете задать мне вопрос или выбрать интересующий из списка:",
-                         reply_markup=kb.StartQuestions)
-        bot.register_next_step_handler(message, Dialog)
+        Dialog(message)
     else:
         bot.send_message(message.from_user.id, "Укажите ФИО интересующего Вас работника")
         bot.register_next_step_handler(message, FIO_check)
@@ -160,22 +156,21 @@ def FIO_check(message):
                                "WHERE first_name=%s AND patronymic=%s",
                                [first_word, second_word])
                 record = cursor.fetchall()
+    cursor.close()
+    con.close()
     if record==[] or len(listFIO) < 2:
-        bot.send_message(message.from_user.id, f'Работника с именем {message.text} не найдено!')
+        bot.send_message(message.from_user.id, f'Работника с именем {message.text.title()} не найдено!')
         bot.send_message(message.from_user.id, "Чьё расписание Вы хотите узнать?", reply_markup=kb.Timetable1)
         bot.register_next_step_handler(message, timetable)
     elif len(record)> 1 and len(listFIO) == 2:
         for a in range(len(record)):
             persons = persons + f'{record [a][2]}  {record [a][1]}  {record [a][3]}\n'
-        bot.send_message(message.from_user.id, f'По Вашему запросу найдено несколько работников: \n{persons}')
-        bot.send_message(message.from_user.id, f'Уточникте пожалуйста\n'
-                                               f'Чьё расписание Вы хотите узнать?')
+        bot.send_message(message.from_user.id, f'По Вашему запросу найдено несколько работников: \n{persons}\n'
+                                               f'Уточникте пожалуйста чьё расписание Вы хотите узнать?\n')
         timetable(message)
     else:
         id = str(record[0][0])
         timetable_check(id, buf)
-    cursor.close()
-    con.close()
 
 
 def timetable_check(id, message):
@@ -222,14 +217,12 @@ def timetable_check(id, message):
                                       f'Должность: {place[0][6]}\n'
                                       f'Отдел: {place[0][3]} (Рабочее место №{place[0][4]})\n\n'
                                       f'Находится по адресу: {location[0][0]}\n'
-                                      f'Вы можете связаться с работником по корпоративной почте: {place[0][5]}\n'
+                                      f'Вы можете связаться с работником по корпоративной почте:\n{place[0][5]}\n'
                                       f'Данного работника нет на месте\n\n'
                                       f'Расписание на пару дней вперёд:\n'
                                       f'{other_days}',
                              reply_markup=kb.Menu)
-        bot.send_message(user_id, "Можете задать мне вопрос или выбрать интересующий из списка:",
-                         reply_markup=kb.StartQuestions)
-        bot.register_next_step_handler(message, Dialog)
+        Dialog(message)
     else:
         if id==get_my_id(user_id):
             bot.send_message(user_id, f'Время работы сегодня: {str(record[0][0])[:-3]}-{str(record[0][1])[:-3]}\n'
@@ -242,15 +235,13 @@ def timetable_check(id, message):
                                       f'Должность: {place[0][6]}\n'
                                       f'Отдел: {place[0][3]} (Рабочее место №{place[0][4]})\n\n'
                                       f'Находится по адресу: {location[0][0]}\n'
-                                      f'Вы можете связаться с работником по корпоративной почте: {place[0][5]}\n\n'
+                                      f'Вы можете связаться с работником по корпоративной почте:\n{place[0][5]}\n\n'
                                       f'Время работы сегодня: {str(record[0][0])[:-3]}-{str(record[0][1])[:-3]}\n'
                                       f'Сегодняшние мероприятия: {str(record[0][2])} \n\n'
                                       f'Расписание на пару дней вперёд:\n'
                                       f'{other_days}',
                              reply_markup=kb.Menu)
-        bot.send_message(user_id, "Можете задать мне вопрос или выбрать интересующий из списка:",
-                         reply_markup=kb.StartQuestions)
-        bot.register_next_step_handler(message, Dialog)
+        Dialog(message)
 
 
 def location_of_department(message):
@@ -298,13 +289,15 @@ def location_of_department(message):
         location = cursor.fetchall()
     else:
         location = []
+    cursor.close()
+    con.close()
     if location == []:
         bot.send_message(message.from_user.id,"Такого отдела не существует, выберете отдел из Меню ниже\n"
                                               "Какой отдел Вас интересует?", reply_markup=kb.department_choice )
         bot.register_next_step_handler(message, location_of_department)
     else:
         first=["IT", "БУХГАЛТЕРСКИЙ", "ТОРГОВЫЙ", "ЮРИДИЧЕСКИЙ"]
-        if message.text  in first:
+        if message.text in first:
             bot.send_message(message.from_user.id, f'{location[0][1]} отдел находится по адресу:\n {location[0][0]}\n'
                                                    f'Телефон для связи: {location[0][2]}',
                              reply_markup=kb.Menu)
@@ -312,11 +305,7 @@ def location_of_department(message):
             bot.send_message(message.from_user.id, f'Отдел {location[0][1]} находится по адресу:\n {location[0][0]}\n'
                                                    f'Телефон для связи: {location[0][2]}',
                              reply_markup=kb.Menu)
-        bot.send_message(message.from_user.id, "Можете задать мне вопрос или выбрать интересующий из списка:",
-                         reply_markup=kb.StartQuestions)
-        bot.register_next_step_handler(message, Dialog)
-    cursor.close()
-    con.close()
+        Dialog(message)
 
 
 def quests(message):
@@ -325,13 +314,13 @@ def quests(message):
     cursor = con.cursor()
     cursor.execute("SELECT task, done, url_tests, inspection FROM cases WHERE id=%s", [id])
     my_qests = cursor.fetchall()
+    cursor.close()
+    con.close()
     qests = ''
     qests1 = ''
     if my_qests == []:
         bot.send_message(message.from_user.id,"У Вас нет заданий на текущий момент")
-        bot.send_message(message.from_user.id, "Можете задать мне вопрос или выбрать интересующий из списка:",
-                         reply_markup=kb.StartQuestions)
-        bot.register_next_step_handler(message, Dialog)
+        Dialog(message)
     else:
         bot.send_message(message.from_user.id, f'Информация по заданиям представлена ниже', reply_markup=kb.Quests)
         Tests_url = types.InlineKeyboardMarkup()
@@ -361,10 +350,7 @@ def quests(message):
                                                f'В процессе: \n'
                                                f'{qests1}\n\n',
                          reply_markup=Tests_url)
-
         bot.register_next_step_handler(message, fork)
-    cursor.close()
-    con.close()
 
 
 def quest_choice(message):
@@ -373,6 +359,8 @@ def quest_choice(message):
     cursor = con.cursor()
     cursor.execute("SELECT task FROM cases WHERE id=%s AND done IS NULL", [id])
     case = cursor.fetchall()
+    cursor.close()
+    con.close()
     item=[]
     if case == []:
         bot.send_message(message.from_user.id, "У Вас нет заданий на текущий момент")
@@ -390,8 +378,6 @@ def quest_choice(message):
         Change_Status.add(item0)
         bot.send_message(message.from_user.id, f'Какое из заданий вы выполнили?', reply_markup=Change_Status)
         bot.register_next_step_handler(message, Status_Change)
-    cursor.close()
-    con.close()
 
 
 def Status_Change(message):
@@ -400,9 +386,7 @@ def Status_Change(message):
     if task=="Вернуться":
         bot.send_message(message.from_user.id, "Выход в главное меню",
                          reply_markup=kb.Menu)
-        bot.send_message(message.from_user.id, "Можете задать мне вопрос или выбрать интересующий из списка:",
-                         reply_markup=kb.StartQuestions)
-        bot.register_next_step_handler(message, Dialog)
+        Dialog(message)
     else:
         con = psycopg2.connect(**database_connect)
         cursor = con.cursor()
@@ -412,9 +396,7 @@ def Status_Change(message):
         con.close()
         bot.send_message(message.from_user.id, "Выполнение отмечено, ожидайте результатов проверки",
                          reply_markup=kb.Menu)
-        bot.send_message(message.from_user.id, "Можете задать мне вопрос или выбрать интересующий из списка:",
-                         reply_markup=kb.StartQuestions)
-        bot.register_next_step_handler(message, Dialog)
+        Dialog(message)
 
 
 def fork(message):
@@ -422,9 +404,7 @@ def fork(message):
         quest_choice(message)
     else:
         bot.send_message(message.from_user.id, "Выход в главное меню", reply_markup=kb.Menu)
-        bot.send_message(message.from_user.id, "Можете задать мне вопрос или выбрать интересующий из списка:",
-                         reply_markup=kb.StartQuestions)
-        bot.register_next_step_handler(message, Dialog)
+        Dialog(message)
 
 
 
