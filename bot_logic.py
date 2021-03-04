@@ -293,7 +293,7 @@ def location_of_department(message):
     con.close()
     if location == []:
         bot.send_message(message.from_user.id,"Такого отдела не существует, выберете отдел из Меню ниже\n"
-                                              "Какой отдел Вас интересует?", reply_markup=kb.department_choice )
+                                              "Какой отдел Вас интересует?", reply_markup=kb.department_choice)
         bot.register_next_step_handler(message, location_of_department)
     else:
         first=["IT", "БУХГАЛТЕРСКИЙ", "ТОРГОВЫЙ", "ЮРИДИЧЕСКИЙ"]
@@ -319,13 +319,10 @@ def quests(message):
     qests = ''
     qests1 = ''
     if my_qests == []:
-        bot.send_message(message.from_user.id,"У Вас нет заданий на текущий момент")
+        bot.send_message(message.from_user.id,"У Вас нет заданий на текущий момент", reply_markup=kb.Menu)
         Dialog(message)
     else:
         bot.send_message(message.from_user.id, f'Информация по заданиям представлена ниже', reply_markup=kb.Quests)
-        Tests_url = types.InlineKeyboardMarkup()
-        item1 = types.InlineKeyboardButton(text='Пройти тестирование', url=f'{my_qests[0][1]}')
-        Tests_url.add(item1)
         item=[]
         for a in range(len(my_qests)):
             if my_qests[a][1] == 'Задание выполнено':
@@ -344,12 +341,20 @@ def quests(message):
             Tests_url = types.InlineKeyboardMarkup()
             for b in range(len(item)):
                 Tests_url.add(item[b])
-        bot.send_message(message.from_user.id, f'Ваши задания на текущий период: \n\n'
-                                               f'Выполненные задания: \n'
-                                               f'{qests}\n'
-                                               f'В процессе: \n'
-                                               f'{qests1}\n\n',
-                         reply_markup=Tests_url)
+            bot.send_message(message.from_user.id, f'Ваши задания на текущий период: \n\n'
+                                                   f'Выполненные задания: \n'
+                                                   f'{qests}\n\n'
+                                                   f'В процессе: \n'
+                                                   f'{qests1}\n\n',
+                             reply_markup=Tests_url)
+        else:
+            bot.send_message(message.from_user.id, f'Ваши задания на текущий период: \n\n'
+                                                   f'Выполненные задания: \n'
+                                                   f'{qests}\n\n'
+                                                   f'В процессе: \n'
+                                                   f'{qests1}\n\n')
+
+
         bot.register_next_step_handler(message, fork)
 
 
@@ -363,10 +368,8 @@ def quest_choice(message):
     con.close()
     item=[]
     if case == []:
-        bot.send_message(message.from_user.id, "У Вас нет заданий на текущий момент")
-        bot.send_message(message.from_user.id, "Можете задать мне вопрос или выбрать интересующий из списка:",
-                         reply_markup=kb.StartQuestions)
-        bot.register_next_step_handler(message, Dialog)
+        bot.send_message(message.from_user.id, "У Вас нет заданий на текущий момент", reply_markup=kb.Menu)
+        Dialog(message)
     else:
         for a in range(len(case)):
             item1 = types.KeyboardButton(f'{case[a][0]}')
